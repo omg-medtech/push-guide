@@ -37,6 +37,8 @@ select{font:inherit;padding:10px 12px;border:1.5px solid var(--line);border-radi
 .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
 .chip:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .count{font-size:13px;color:var(--muted)}
+.hint{font-size:12.5px;color:var(--muted)}
+.hint b{color:var(--accent);font-size:14px}
 main{padding-block:18px 60px;display:flex;flex-direction:column;gap:18px}
 .group{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .ghead{padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:6px 16px;border-bottom:1px solid var(--line)}
@@ -81,7 +83,7 @@ main{padding-block:18px 60px;display:flex;flex-direction:column;gap:18px}
 <div class="bar"><div class="wrap">
   <div class="searchrow">
     <label class="search" for="q"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" type="search" placeholder="ابحث بالاسم، المادة الفعالة، الاستخدام، الشركة أو الكود…" autocomplete="off" aria-label="بحث"></label>
+      <input id="q" type="search" placeholder="ابحث بالاسم أو المادة الفعالة أو الكود… واستخدم * أو % مكان أي حرف مش عارفه" autocomplete="off" aria-label="بحث"></label>
     <select id="sort" aria-label="ترتيب">
       <option value="pv">الأعلى قيمة Push</option>
       <option value="pct">الأعلى نسبة Push</option>
@@ -91,6 +93,7 @@ main{padding-block:18px 60px;display:flex;flex-direction:column;gap:18px}
   </div>
   <div class="chips" id="chips" role="group" aria-label="الأقسام"></div>
   <div class="count" id="count"></div>
+  <div class="hint">مش عارف حرف أو مسافة أو شرطة؟ حط مكانه <b>*</b> أو <b>%</b> — مثال: <span dir="ltr">co*q10</span> بيجيب CO Q-10 و CO Q10 و COQ10</div>
 </div></div>
 
 <main class="wrap" id="list"></main>
@@ -101,7 +104,10 @@ const SECTIONS = ["مكملات غذائية", "أدوية", "العناية ب�
 const $ = s => document.querySelector(s);
 const fmt = n => n == null ? '—' : n.toLocaleString('en-US', {maximumFractionDigits: 1});
 const norm = s => String(s).toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي');
-DATA.forEach(r => r._s = norm([r.name, r.grp, r.act, r.use, r.company, r.code, r.sec].join(' ')));
+DATA.forEach(r => r._s = norm([r.name, r.grp, r.act, r.use, r.company, r.code, r.sec].join(' | ')));
+const reEsc = s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+// * or % = any unknown letters / spaces / dashes (zero or more), within one field
+const matcher = w => /[*%]/.test(w) ? (re => s => re.test(s))(new RegExp(w.split(/[*%]+/).map(reEsc).join('[^|]*'))) : s => s.includes(w);
 let sec = 'الكل';
 try { sec = localStorage.getItem('push-sec') || 'الكل'; } catch (e) {}
 if (sec !== 'الكل' && !SECTIONS.includes(sec)) sec = 'الكل';
@@ -145,8 +151,8 @@ function card(r, isTop) {
 }
 
 function render() {
-  const words = norm($('#q').value.trim()).split(/\s+/).filter(Boolean);
-  const rows = DATA.filter(r => (sec === 'الكل' || r.sec === sec) && words.every(w => r._s.includes(w)));
+  const words = norm($('#q').value.trim()).split(/\s+/).filter(w => w && !/^[*%]+$/.test(w)).map(matcher);
+  const rows = DATA.filter(r => (sec === 'الكل' || r.sec === sec) && words.every(m => m(r._s)));
   const groups = new Map();
   rows.forEach(r => { if (!groups.has(r.grp)) groups.set(r.grp, []); groups.get(r.grp).push(r); });
   const sorter = SORTS[$('#sort').value];
@@ -162,7 +168,7 @@ function render() {
       <div class="gmeta"><span>الاستخدام: <b>${esc(items[0].use)}</b></span>${acts.length === 1 ? `<span dir="auto">المادة الفعالة: <b>${esc(acts[0])}</b></span>` : ''}</div>
     </div><div class="cards">${items.map(r => card(r, allInGroup.length > 1 && (r.pv || 0) === best && best > 0)).join('')}</div></section>`;
   }
-  $('#list').innerHTML = html || `<div class="empty">مفيش نتائج لـ «${esc($('#q').value)}». جرّب اسم المادة الفعالة بالإنجليزي (مثلاً Biotin) أو كلمة من الاستخدام (مثلاً تساقط).</div>`;
+  $('#list').innerHTML = html || `<div class="empty">مفيش نتائج لـ «${esc($('#q').value)}». جرّب اسم المادة الفعالة بالإنجليزي (مثلاً Biotin)، أو حط * أو % مكان الحرف أو المسافة أو الشرطة اللي مش متأكد منها (مثلاً omega*3 أو c%q10).</div>`;
   $('#count').textContent = `${rows.length.toLocaleString('en-US')} صنف في ${groups.size} مجموعة`;
 }
 let t; $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(render, 140); });
