@@ -146,6 +146,7 @@ const SECTIONS = ["مكملات غذائية", "أدوية", "العناية ب�
 const $ = s => document.querySelector(s);
 const fmt = n => n == null ? '—' : n.toLocaleString('en-US', {maximumFractionDigits: 1});
 const norm = s => String(s).toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي');
+DATA.forEach(r => r._n = norm(r.name));
 DATA.forEach(r => r._s = norm([r.name, r.grp, r.act, r.use, r.company, r.code, r.sec].join(' | ')));
 const reEsc = s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 // * or % = any unknown letters / spaces / dashes (zero or more), within one field
@@ -194,7 +195,9 @@ function card(r, isTop) {
 
 function render() {
   const words = norm($('#q').value.trim()).split(/\s+/).filter(w => w && !/^[*%]+$/.test(w)).map(matcher);
-  const rows = DATA.filter(r => (sec === 'الكل' || r.sec === sec) && words.every(m => m(r._s)));
+  const base = DATA.filter(r => sec === 'الكل' || r.sec === sec);
+  let rows = base.filter(r => words.every(m => m(r._n)));
+  if (!rows.length) rows = base.filter(r => words.every(m => m(r._s)));
   const groups = new Map();
   rows.forEach(r => { if (!groups.has(r.grp)) groups.set(r.grp, []); groups.get(r.grp).push(r); });
   const sorter = SORTS[$('#sort').value];
@@ -226,7 +229,7 @@ function loadDrugs() {
   if (DRUGS) return Promise.resolve();
   if (!loading) loading = (typeof DRUG_DATA !== 'undefined' ? Promise.resolve(DRUG_DATA) : fetch('drugs.json').then(r => r.json())).then(d => {
     GROUPS = d.groups;
-    DRUGS = d.drugs.map(x => ({name: x[0], act: x[1], price: x[2], co: x[3], cat: x[4], g: x[5], t: x[6], _s: norm(x[0] + ' | ' + x[1])}));
+    DRUGS = d.drugs.map(x => ({name: x[0], act: x[1], price: x[2], co: x[3], cat: x[4], g: x[5], t: x[6], _n: norm(x[0]), _s: norm(x[0] + ' | ' + x[1])}));
     $('#td-n').textContent = '(' + DRUGS.length.toLocaleString('en-US') + ')';
   });
   return loading;
@@ -262,7 +265,8 @@ function renderDrugs() {
     return;
   }
   const hits = [];
-  for (const d of DRUGS) { if (words.every(m => m(d._s))) hits.push(d); }
+  for (const d of DRUGS) { if (words.every(m => m(d._n))) hits.push(d); }
+  if (!hits.length) for (const d of DRUGS) { if (words.every(m => m(d._s))) hits.push(d); }
   hits.sort((a, b) => (b.g >= 0) - (a.g >= 0) || a.name.localeCompare(b.name));
   const shown = hits.slice(0, 60);
   $('#dcount').textContent = `${hits.length.toLocaleString('en-US')} دواء${hits.length > 60 ? ' (بيظهر أول 60، كمّل الكتابة عشان تضيّق البحث)' : ''} · ${hits.filter(d => d.g >= 0).length} ليهم بديل في Push`;
