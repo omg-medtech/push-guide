@@ -172,13 +172,44 @@ const gImg = n => 'https://www.google.com/search?tbm=isch&q=' + encodeURICompone
 const thumb = n => 'https://tse1.mm.bing.net/th?q=' + encodeURIComponent(n) + '&w=320&h=240&c=7&rs=1&p=0';
 const mono = n => n.replace(/[^A-Za-z ]/g,' ').trim().split(/\s+/).slice(0,2).map(w => w[0] || '').join('').toUpperCase() || '•';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Image resolver: 1) official pack shot from Open Beauty/Food Facts (brand-supplied), 2) web thumbnail biased to the maker's official site, 3) placeholder.
+const IMGC = (() => { try { return JSON.parse(localStorage.getItem('push-img') || '{}'); } catch (e) { return {}; } })();
+const saveImg = () => { try { localStorage.setItem('push-img', JSON.stringify(IMGC)); } catch (e) {} };
+const firstTok = n => (n.toLowerCase().match(/[a-z]{3,}/) || [''])[0];
+async function officialImg(name) {
+  const tok = firstTok(name); if (!tok) return null;
+  for (const host of ['world.openbeautyfacts.org', 'world.openfoodfacts.org']) {
+    try {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 6000);
+      const r = await fetch(`https://${host}/cgi/search.pl?search_terms=${encodeURIComponent(name.replace(/\d+\s*(ML|GM|G|MG|CAP|TAB).*$/i, '').trim())}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,image_front_small_url`, {signal: ctl.signal});
+      clearTimeout(t);
+      const j = await r.json();
+      const hit = (j.products || []).find(p => p.image_front_small_url && ((p.brands || '') + ' ' + (p.product_name || '')).toLowerCase().includes(tok));
+      if (hit) return hit.image_front_small_url;
+    } catch (e) {}
+  }
+  return null;
+}
+const webImg = (n, co) => thumb(n + ' ' + (co || '') + ' official');
+const imgQ = []; let imgBusy = 0;
+function pumpImg() {
+  while (imgBusy < 3 && imgQ.length) {
+    const el = imgQ.shift(); imgBusy++;
+    const n = el.dataset.n;
+    const done = () => { imgBusy--; pumpImg(); };
+    if (IMGC[n]) { el.src = IMGC[n]; done(); continue; }
+    officialImg(n).then(u => { const url = u || webImg(n, el.dataset.co); IMGC[n] = url; saveImg(); el.onerror = () => { if (u) { el.onerror = () => imgFail(el); el.src = webImg(n, el.dataset.co); } else imgFail(el); }; el.src = url; }).finally(done);
+  }
+}
+const imgObs = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { imgObs.unobserve(e.target); imgQ.push(e.target); pumpImg(); } }), {rootMargin: '300px'}) : null;
+function hookImgs(root) { root.querySelectorAll('img[data-lazy]').forEach(el => { el.removeAttribute('data-lazy'); if (imgObs) imgObs.observe(el); else { imgQ.push(el); pumpImg(); } }); }
 window.imgFail = el => { const n = el.dataset.n; el.parentElement.insertAdjacentHTML('beforeend', `<div class="ph"><span class="mono">${esc(mono(n))}</span><span>الصورة على جوجل ↓</span></div>`); el.remove(); };
 
 const SORTS = {pv: (a,b) => (b.pv||0)-(a.pv||0), pct: (a,b) => b.push-a.push || (b.pv||0)-(a.pv||0), price: (a,b) => (b.price||0)-(a.price||0), name: (a,b) => a.name.localeCompare(b.name)};
 
 function card(r, isTop) {
   return `<article class="card${isTop ? ' top' : ''}">
-    <div class="img"><img loading="lazy" src="${thumb(r.name)}" alt="${esc(r.name)}" data-n="${esc(r.name)}" onerror="imgFail(this)">${isTop ? '<span class="badge">الأعلى Push</span>' : ''}</div>
+    <div class="img"><img alt="${esc(r.name)}" data-n="${esc(r.name)}" data-co="${esc(r.company || '')}" data-lazy="1">${isTop ? '<span class="badge">الأعلى Push</span>' : ''}</div>
     <div class="body">
       <div class="name">${esc(r.name)}</div>
       <div class="co">${esc(r.company || '—')} · كود ${r.code}</div>
@@ -215,6 +246,7 @@ function render() {
   }
   $('#list').innerHTML = html || `<div class="empty">مفيش نتائج لـ «${esc($('#q').value)}». جرّب اسم المادة الفعالة بالإنجليزي (مثلاً Biotin)، أو حط * أو % مكان الحرف أو المسافة أو الشرطة اللي مش متأكد منها (مثلاً omega*3 أو c%q10).</div>`;
   $('#count').textContent = `${rows.length.toLocaleString('en-US')} صنف في ${groups.size} مجموعة`;
+  hookImgs($('#list'));
 }
 let t; $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(render, 140); });
 $('#sort').addEventListener('change', render);
