@@ -192,13 +192,19 @@ async function officialImg(name) {
 }
 const webImg = (n, co) => thumb(n + ' ' + (co || '') + ' official');
 const imgQ = []; let imgBusy = 0;
+function remoteImg(el, done) {
+  const n = el.dataset.n;
+  if (IMGC[n]) { el.onerror = () => imgFail(el); el.src = IMGC[n]; done(); return; }
+  officialImg(n).then(u => { const url = u || webImg(n, el.dataset.co); IMGC[n] = url; saveImg(); el.onerror = () => { if (u) { el.onerror = () => imgFail(el); el.src = webImg(n, el.dataset.co); } else imgFail(el); }; el.src = url; }).finally(done);
+}
 function pumpImg() {
   while (imgBusy < 3 && imgQ.length) {
     const el = imgQ.shift(); imgBusy++;
-    const n = el.dataset.n;
     const done = () => { imgBusy--; pumpImg(); };
-    if (IMGC[n]) { el.src = IMGC[n]; done(); continue; }
-    officialImg(n).then(u => { const url = u || webImg(n, el.dataset.co); IMGC[n] = url; saveImg(); el.onerror = () => { if (u) { el.onerror = () => imgFail(el); el.src = webImg(n, el.dataset.co); } else imgFail(el); }; el.src = url; }).finally(done);
+    // 1) image saved inside the app (images/<code>.jpg) so it works offline
+    el.onload = () => { el.onload = null; done(); };
+    el.onerror = () => { el.onload = null; remoteImg(el, done); };
+    el.src = 'images/' + el.dataset.code + '.jpg';
   }
 }
 const imgObs = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { imgObs.unobserve(e.target); imgQ.push(e.target); pumpImg(); } }), {rootMargin: '300px'}) : null;
@@ -209,7 +215,7 @@ const SORTS = {pv: (a,b) => (b.pv||0)-(a.pv||0), pct: (a,b) => b.push-a.push || 
 
 function card(r, isTop) {
   return `<article class="card${isTop ? ' top' : ''}">
-    <div class="img"><img alt="${esc(r.name)}" data-n="${esc(r.name)}" data-co="${esc(r.company || '')}" data-lazy="1">${isTop ? '<span class="badge">الأعلى Push</span>' : ''}</div>
+    <div class="img"><img alt="${esc(r.name)}" data-n="${esc(r.name)}" data-co="${esc(r.company || '')}" data-code="${r.code}" data-lazy="1">${isTop ? '<span class="badge">الأعلى Push</span>' : ''}</div>
     <div class="body">
       <div class="name">${esc(r.name)}</div>
       <div class="co">${esc(r.company || '—')} · كود ${r.code}</div>
@@ -323,5 +329,6 @@ let startTab = location.hash === '#drugs' ? 'drugs' : 'push';
 if (!location.hash) { try { startTab = localStorage.getItem('push-tab') || 'push'; } catch (e) {} }
 setTab(startTab);
 window.addEventListener('hashchange', () => setTab(location.hash === '#drugs' ? 'drugs' : 'push'));
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body></html>
