@@ -158,6 +158,12 @@ main{padding-block:18px 60px;display:flex;flex-direction:column;gap:18px}
     <label class="upbtn">اختار ملف الإكسيل بتاع الشهر (PUSH 1 / 2 / 3)
       <input id="updfile" type="file" accept=".xlsx,.xlsm,.xls" hidden></label>
     <div id="updres"></div>
+    <details class="ulist" id="syncbox"><summary>مزامنة مع كل الأجهزة (إعداد مرة واحدة على الجهاز اللي بترفع منه)</summary>
+      <p class="updsub" style="margin-top:8px">بعد ما تطبّق التحديث، الأداة بترفعه على GitHub والأجهزة التانية بتسحبه لوحدها أول ما تفتح الأداة وهي على النت. محتاج مفتاح GitHub (Token) مرة واحدة بس على الجهاز ده — بيتحفظ عليه بس.</p>
+      <input id="ghtoken" type="password" placeholder="الصق الـ Token هنا" autocomplete="off" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:none;color:inherit">
+      <div class="ubtns"><button type="button" id="ghsave">حفظ المفتاح</button><button type="button" id="ghclear">مسح المفتاح من الجهاز</button></div>
+      <p class="updsub" id="ghstate"></p>
+    </details>
   </section>
 </main>
 
@@ -365,7 +371,7 @@ const jac = (a, b) => { const A = new Set(a), B = new Set(b); let i = 0; A.forEa
 function showUpdState() {
   $('#updstate').textContent = OVR ? `القائمة الحالية: ${OVR.month || 'شيت محدّث'} — اتحدّثت ${new Date(OVR.at).toLocaleDateString('ar-EG')} على الجهاز ده.` : 'القائمة الحالية هي الأصلية (نوفمبر 2026). اختار شيت الشهر الجديد وهتتضاف الأصناف الجديدة وتتمسح المحذوفة تلقائياً.';
   if (OVR && !$('#updres').innerHTML) $('#updres').innerHTML = '<div class="ubtns"><button type="button" id="ureset">رجوع للقائمة الأصلية</button></div>';
-  const r = $('#ureset'); if (r) r.onclick = () => { try { localStorage.removeItem(OVR_KEY); } catch (e) {} location.hash = '#upd'; location.reload(); };
+  const r = $('#ureset'); if (r) r.onclick = resetAll;
 }
 function loadSheetJS() {
   if (window.XLSX) return Promise.resolve();
@@ -442,18 +448,56 @@ $('#updfile').addEventListener('change', async ev => {
       <details class="ulist"><summary>تغيّر السعر أو النسبة (${changed.length})</summary>${li(changed, x => { const r = cur.get(x.code); return `${esc(x.name)} <small>${fmt(r.price)}→${fmt(x.price)} ج · ${Math.round(r.push * 100)}%→${Math.round(x.push * 100)}%</small>`; })}</details>
       <div class="ubtns"><button type="button" class="main" id="uapply">تطبيق التحديث</button>${OVR ? '<button type="button" id="ureset">رجوع للقائمة الأصلية</button>' : ''}</div>`;
     $('#uapply').onclick = applyUpdate;
-    const rb = $('#ureset'); if (rb) rb.onclick = () => { try { localStorage.removeItem(OVR_KEY); } catch (e) {} location.hash = '#upd'; location.reload(); };
+    const rb = $('#ureset'); if (rb) rb.onclick = resetAll;
   } catch (e) { box.innerHTML = `<p class="updsub">حصل خطأ: ${esc(e.message || e)}</p>`; }
 });
-function applyUpdate() {
+const GH = {owner: 'omg-medtech', repo: 'push-guide', path: 'data.json', branch: 'main'};
+const ghTok = () => { try { return localStorage.getItem('push-gh-token') || ''; } catch (e) { return ''; } };
+async function ghPut(payload) {
+  const tok = ghTok(); if (!tok) return 'no-token';
+  const url = `https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${GH.path}`;
+  const H = {Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github+json'};
+  let sha; try { const g = await fetch(url + '?ref=' + GH.branch + '&t=' + Date.now(), {headers: H, cache: 'no-store'}); if (g.ok) sha = (await g.json()).sha; } catch (e) {}
+  const body = {message: 'Monthly update ' + (payload.month || ''), branch: GH.branch, content: btoa(unescape(encodeURIComponent(JSON.stringify(payload)))), ...(sha ? {sha} : {})};
+  const r = await fetch(url, {method: 'PUT', headers: {...H, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  return r.ok ? 'ok' : 'error ' + r.status;
+}
+function syncState() { $('#ghstate').textContent = ghTok() ? 'المفتاح محفوظ على الجهاز ده — التحديثات هتترفع تلقائياً.' : 'مفيش مفتاح — التحديث هيتطبّق على الجهاز ده بس.'; }
+$('#ghsave').onclick = () => { const v = $('#ghtoken').value.trim(); if (!v) return; try { localStorage.setItem('push-gh-token', v); } catch (e) {} $('#ghtoken').value = ''; syncState(); };
+$('#ghclear').onclick = () => { try { localStorage.removeItem('push-gh-token'); } catch (e) {} syncState(); };
+syncState();
+async function resetAll() {
+  const at = Date.now(); let st = '';
+  if (ghTok()) { try { st = await ghPut({data: null, month: '', at}); } catch (e) { st = 'error'; } }
+  try { localStorage.removeItem(OVR_KEY); localStorage.setItem('push-synced-at', String(at)); } catch (e) {}
+  if (st && st !== 'ok') alert('اترجعت القائمة على الجهاز ده، لكن رفعها للأجهزة التانية فشل (' + st + ').');
+  location.hash = '#upd'; location.reload();
+}
+async function applyUpdate() {
   const P = PENDING; if (!P) return;
   const nw = new Map(P.items.map(i => [i.code, i]));
   const keep = DATA.filter(r => nw.has(r.code)).map(r => { const i = nw.get(r.code); const o = {}; for (const k in r) if (k[0] !== '_') o[k] = r[k]; o.price = i.price; o.push = i.push; o.pv = Math.round((i.price || 0) * i.push * 100) / 100; o.isNew = false; return o; });
   const add = P.added.map(x => ({code: x.code, name: x.name, company: x.company, sec: x.c.sec, grp: x.c.grp, act: x.c.act, use: x.c.use, price: x.price, push: x.push, pv: Math.round((x.price || 0) * x.push * 100) / 100, sheet: x.sheet, isNew: true}));
-  const data = keep.concat(add);
-  try { localStorage.setItem(OVR_KEY, JSON.stringify({data, month: P.month, at: Date.now()})); } catch (e) { alert('مقدرتش أحفظ على الجهاز (المساحة ممتلئة أو التخزين متوقف).'); return; }
+  const payload = {data: keep.concat(add), month: P.month, at: Date.now()};
+  try { localStorage.setItem(OVR_KEY, JSON.stringify(payload)); localStorage.setItem('push-synced-at', String(payload.at)); } catch (e) { alert('مقدرتش أحفظ على الجهاز (المساحة ممتلئة أو التخزين متوقف).'); return; }
+  $('#uapply').disabled = true; $('#uapply').textContent = 'بحفظ…';
+  let st = 'no-token'; try { st = await ghPut(payload); } catch (e) { st = 'error'; }
+  if (st === 'ok') alert('اتحدّثت القائمة واترفعت على GitHub. باقي الأجهزة هتتحدّث لوحدها خلال دقيقتين تقريباً (لما تفتح الأداة وهي على النت).');
+  else if (st === 'no-token') alert('اتحدّثت القائمة على الجهاز ده بس. علشان تروح لكل الأجهزة، احفظ مفتاح GitHub من «مزامنة مع كل الأجهزة» وارفع الشيت تاني.');
+  else alert('اتحدّثت القائمة على الجهاز ده، لكن الرفع لباقي الأجهزة فشل (' + st + '). اتأكد من المفتاح.');
   location.hash = '#push'; location.reload();
 }
+// pull the latest list published by another device
+(async () => {
+  try {
+    const r = await fetch('data.json?t=' + Date.now(), {cache: 'no-store'}); if (!r.ok) return;
+    const j = await r.json(); const mine = Math.max((OVR && OVR.at) || 0, Number(localStorage.getItem('push-synced-at') || 0));
+    if (!j || !j.at || j.at <= mine) return;
+    if (j.data === null) localStorage.removeItem(OVR_KEY); else if (Array.isArray(j.data) && j.data.length) localStorage.setItem(OVR_KEY, JSON.stringify(j)); else return;
+    localStorage.setItem('push-synced-at', String(j.at));
+    location.reload();
+  } catch (e) {}
+})();
 if (OVR && OVR.month) { const h = document.querySelector('header h1'); if (h) h.textContent = 'دليل بدائل Push — ' + OVR.month; }
 </script>
 </body></html>
