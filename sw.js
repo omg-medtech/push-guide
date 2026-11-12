@@ -1,5 +1,5 @@
 // Offline cache: app shell + images are cached after first use.
-const V = 'push-v3';
+const V = 'push-v4';
 const SHELL = ['./', 'index.html', 'drugs.json', 'manifest.json', 'icon.svg', 'icon-192.png', 'logo.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
