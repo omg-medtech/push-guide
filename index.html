@@ -276,6 +276,13 @@ body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
   background:radial-gradient(900px 520px at 92% -8%,var(--tint1),transparent 62%),radial-gradient(760px 480px at 4% 28%,var(--tint2),transparent 60%),radial-gradient(900px 600px at 70% 105%,var(--tint3),transparent 60%)}
 html{background:var(--bg)}
 @media print{body::after{display:none}}
+
+/* soft brand-tinted background (purple + blue from the logo, very light) */
+body{background-color:var(--bg);background-image:radial-gradient(1100px 620px at 100% -5%,rgb(106 44 145 / .13),transparent 62%),radial-gradient(900px 560px at 0% 22%,rgb(63 127 193 / .11),transparent 60%),radial-gradient(1000px 600px at 70% 105%,rgb(106 44 145 / .08),transparent 60%);background-attachment:fixed}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{background-image:radial-gradient(1100px 620px at 100% -5%,rgb(150 90 210 / .16),transparent 62%),radial-gradient(900px 560px at 0% 22%,rgb(63 127 193 / .13),transparent 60%),radial-gradient(1000px 600px at 70% 105%,rgb(150 90 210 / .09),transparent 60%)}}
+:root[data-theme="dark"] body{background-image:radial-gradient(1100px 620px at 100% -5%,rgb(150 90 210 / .16),transparent 62%),radial-gradient(900px 560px at 0% 22%,rgb(63 127 193 / .13),transparent 60%),radial-gradient(1000px 600px at 70% 105%,rgb(150 90 210 / .09),transparent 60%)}
+:root{--bg:#f4f0f9}
+.bar{background:color-mix(in srgb,var(--surface) 90%,transparent)}
 </style></head><body>
 
 <header class="appbar"><div class="appbar-in">
