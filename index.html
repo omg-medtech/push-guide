@@ -412,10 +412,16 @@ function remoteImg(el, done) {
   if (IMGC[n]) { el.onerror = () => imgFail(el); el.src = IMGC[n]; done(); return; }
   officialImg(n).then(u => { const url = u || webImg(n, el.dataset.co); IMGC[n] = url; saveImg(); el.onerror = () => { if (u) { el.onerror = () => imgFail(el); el.src = webImg(n, el.dataset.co); } else imgFail(el); }; el.src = url; }).finally(done);
 }
+// official image links (hotlinked, no download): imagelinks.json { code: url }
+let LINKS = {}, linksReady = false;
+const LINKSP = fetch('imagelinks.json?t=' + Date.now()).then(r => r.ok ? r.json() : {}).then(j => { LINKS = j || {}; }).catch(() => {}).finally(() => { linksReady = true; });
 function pumpImg() {
+  if (!linksReady) { LINKSP.then(pumpImg); return; }
   while (imgBusy < 3 && imgQ.length) {
     const el = imgQ.shift(); imgBusy++;
     const done = () => { imgBusy--; pumpImg(); };
+    const L = LINKS[el.dataset.code];
+    if (L) { el.referrerPolicy = 'no-referrer'; el.onload = () => { el.onload = null; done(); }; el.onerror = () => { el.onload = null; el.onerror = null; el.removeAttribute('src'); el.referrerPolicy = ''; remoteImg(el, done); }; el.src = L; continue; }
     // 1) image saved inside the app (images/<code>.jpg) so it works offline
     el.onload = () => { el.onload = null; done(); };
     el.onerror = () => { el.onload = null; remoteImg(el, done); };
